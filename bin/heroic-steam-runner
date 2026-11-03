@@ -28,15 +28,30 @@ def get_installed_epic_games():
             pass
     return {}
 
+def get_installed_gog_games():
+    installed_file = os.path.join(HEROIC_DIR, "gog_store/installed.json")
+    if os.path.exists(installed_file):
+        try:
+            with open(installed_file) as f:
+                data = json.load(f)
+                return {item.get("appName", item.get("id", "")): item.get("title", "") for item in data.get("installed", [])}
+        except Exception:
+            pass
+    return {}
+
 def print_usage_and_exit():
     print("heroic-steam-runner: Lanceur universel de jeux Heroic pour Steam\n")
     print("Usage dans Steam :")
     print("  Cible : /home/masterh/.local/bin/heroic-steam-runner")
-    print("  Options de lancement : <NomDuJeu> (ex: Sugar, Garlic, Anise)")
+    print("  Options de lancement : <NomDuJeu> (ex: Sugar, Garlic, Anise, Cyberpunk)")
     print("  (OU laisser l'option par défaut de Heroic : heroic://launch?appName=...)\n")
     print("Jeux Epic Games détectés :")
     games = get_installed_epic_games()
     for app_id, title in games.items():
+        print(f"  • {title} -> ID: {app_id}")
+    print("\nJeux GOG détectés :")
+    gog_games = get_installed_gog_games()
+    for app_id, title in gog_games.items():
         print(f"  • {title} -> ID: {app_id}")
     print()
     sys.exit(1)
@@ -55,6 +70,11 @@ def parse_args():
                 runner = params["runner"][0]
         elif not arg.startswith("-") and not app_name:
             app_name = arg
+
+    # Alias pratiques pour les jeux connus
+    if app_name and app_name.lower() in ["cyberpunk", "cyberpunk2077", "cyberpunk 2077", "cp77", "cp2077"]:
+        app_name = "1423049311"
+        runner = "gog"
 
     if not app_name:
         print_usage_and_exit()
@@ -116,8 +136,32 @@ def main():
             cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
 
     elif runner == "gog":
-        cmd = [GOGDL, "launch", app_name]
-        cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
+        game_path = cfg.get("installPath") or os.path.join(os.path.expanduser("~/Games/Heroic"), "Cyberpunk 2077" if app_name == "1423049311" else app_name)
+        gog_installed = os.path.join(HEROIC_DIR, "gog_store/installed.json")
+        if os.path.exists(gog_installed):
+            try:
+                with open(gog_installed) as f:
+                    gdata = json.load(f)
+                    for item in gdata.get("installed", []):
+                        if item.get("appName") == app_name or item.get("id") == app_name:
+                            p = item.get("install_path") or item.get("installPath")
+                            if p and os.path.exists(p):
+                                game_path = p
+                            break
+            except Exception:
+                pass
+
+        cmd = [GOGDL, "launch", "--platform", "windows"]
+        if wine_type == "proton" and not disable_umu and os.path.exists(UMU_RUN):
+            proton_dir = os.path.dirname(wine_bin)
+            if os.path.islink(proton_dir):
+                proton_dir = os.path.realpath(proton_dir)
+            env["PROTONPATH"] = proton_dir
+            env["STORE"] = "gog"
+            cmd.extend(["--wine", UMU_RUN, "--wine-prefix", wine_prefix])
+        else:
+            cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
+        cmd.extend([game_path, app_name])
     elif runner == "nile":
         cmd = [NILE, "launch", app_name]
         cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
