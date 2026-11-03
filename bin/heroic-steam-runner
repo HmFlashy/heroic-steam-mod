@@ -94,6 +94,12 @@ def main():
         if key and val:
             env[key] = str(val)
 
+    # Activer MangoHud et GameMode si configurés dans Heroic
+    if cfg.get("showMangohud"):
+        env["MANGOHUD"] = "1"
+    if cfg.get("useGameMode"):
+        env["GAMEMODERUN"] = "1"
+
     # Choix du wrapper (UMU / Proton / Wine)
     cmd = []
     if runner == "legendary":
