@@ -72,7 +72,8 @@ try:
             'Resolution': '1600x900',
             'WindowMode': 'Fullscreen',
             'VSync': 'UI-Settings-Video-QualitySetting-Off',
-            'MaximumFPS_OnOff': False
+            'MaximumFPS_OnOff': True,
+            'MaximumFPS_Value': 30
         }
     }
 
