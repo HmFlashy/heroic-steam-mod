@@ -67,6 +67,12 @@ try:
             'EnableCloudSaves': True,
             'EnableMarketing': False,
             'EnableTelemetry': False
+        },
+        '/video/display': {
+            'Resolution': '1600x900',
+            'WindowMode': 'Fullscreen',
+            'VSync': 'UI-Settings-Video-QualitySetting-Off',
+            'MaximumFPS_OnOff': False
         }
     }
 
