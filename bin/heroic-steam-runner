@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""
+heroic-steam-runner: Lanceur générique et synchrone pour les jeux Heroic sous Steam.
+Permet à Steam de suivre le jeu en tant que sous-processus direct, activant ainsi
+Steam Input, le temps de jeu et l'overlay pour n'importe quel jeu Epic / GOG.
+"""
+
+import sys
+import os
+import json
+import urllib.parse
+
+HEROIC_DIR = os.path.expanduser("~/.config/heroic")
+HEROIC_BIN = "/opt/Heroic/app.asar.unpacked/build/bin/x64/linux"
+LEGENDARY = os.path.join(HEROIC_BIN, "legendary")
+GOGDL = os.path.join(HEROIC_BIN, "gogdl")
+NILE = os.path.join(HEROIC_BIN, "nile")
+UMU_RUN = "/usr/bin/umu-run"
+
+def get_installed_epic_games():
+    installed_file = os.path.join(HEROIC_DIR, "legendaryConfig/legendary/installed.json")
+    if os.path.exists(installed_file):
+        try:
+            with open(installed_file) as f:
+                data = json.load(f)
+                return {k: v.get("title", k) for k, v in data.items() if isinstance(v, dict)}
+        except Exception:
+            pass
+    return {}
+
+def print_usage_and_exit():
+    print("heroic-steam-runner: Lanceur universel de jeux Heroic pour Steam\n")
+    print("Usage dans Steam :")
+    print("  Cible : /home/masterh/.local/bin/heroic-steam-runner")
+    print("  Options de lancement : <NomDuJeu> (ex: Sugar, Garlic, Anise)")
+    print("  (OU laisser l'option par défaut de Heroic : heroic://launch?appName=...)\n")
+    print("Jeux Epic Games détectés :")
+    games = get_installed_epic_games()
+    for app_id, title in games.items():
+        print(f"  • {title} -> ID: {app_id}")
+    print()
+    sys.exit(1)
+
+def parse_args():
+    app_name = None
+    runner = "legendary"
+
+    for arg in sys.argv[1:]:
+        if "heroic://launch" in arg:
+            parsed = urllib.parse.urlparse(arg)
+            params = urllib.parse.parse_qs(parsed.query)
+            if "appName" in params:
+                app_name = params["appName"][0]
+            if "runner" in params:
+                runner = params["runner"][0]
+        elif not arg.startswith("-") and not app_name:
+            app_name = arg
+
+    if not app_name:
+        print_usage_and_exit()
+
+    return app_name, runner
+
+def main():
+    app_name, runner = parse_args()
+
+    # Charger la configuration spécifique au jeu dans Heroic
+    cfg_file = os.path.join(HEROIC_DIR, "GamesConfig", f"{app_name}.json")
+    cfg = {}
+    if os.path.exists(cfg_file):
+        try:
+            with open(cfg_file) as f:
+                cfg = json.load(f).get(app_name, {})
+        except Exception as e:
+            print(f"[heroic-steam-runner] Avertissement: Impossible de lire {cfg_file}: {e}")
+
+    # Résolution du WinePrefix
+    wine_prefix = cfg.get("winePrefix") or os.path.expanduser(f"~/.wine")
+    wine_info = cfg.get("wineVersion") or {}
+    wine_type = wine_info.get("type", "proton")
+    wine_bin = wine_info.get("bin", "wine")
+    disable_umu = cfg.get("disableUMU", False)
+
+    # Préparation de l'environnement
+    env = os.environ.copy()
+    env["LEGENDARY_CONFIG_PATH"] = os.path.join(HEROIC_DIR, "legendaryConfig/legendary")
+    env["WINEPREFIX"] = wine_prefix
+    env["GAMEID"] = app_name
+
+    # Récupérer les variables spécifiques configurées dans Heroic
+    for opt in cfg.get("enviromentOptions", []):
+        key = opt.get("key")
+        val = opt.get("value")
+        if key and val:
+            env[key] = str(val)
+
+    # Choix du wrapper (UMU / Proton / Wine)
+    cmd = []
+    if runner == "legendary":
+        cmd = [LEGENDARY, "launch", app_name]
+
+        if wine_type == "proton" and not disable_umu and os.path.exists(UMU_RUN):
+            proton_dir = os.path.dirname(wine_bin)
+            if os.path.islink(proton_dir):
+                proton_dir = os.path.realpath(proton_dir)
+            env["PROTONPATH"] = proton_dir
+            env["STORE"] = "epic"
+            cmd.extend(["--wine", UMU_RUN, "--wine-prefix", wine_prefix])
+        else:
+            cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
+
+    elif runner == "gog":
+        cmd = [GOGDL, "launch", app_name]
+        cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
+    elif runner == "nile":
+        cmd = [NILE, "launch", app_name]
+        cmd.extend(["--wine", wine_bin, "--wine-prefix", wine_prefix])
+    else:
+        print(f"[heroic-steam-runner] Erreur: runner inconnu '{runner}'")
+        sys.exit(1)
+
+    dry_run = "--dry-run" in sys.argv
+    if dry_run:
+        cmd.append("--dry-run")
+
+    print(f"[heroic-steam-runner] Lancement synchrone sous Steam : {app_name} ({runner})")
+    print(f"[heroic-steam-runner] Commande : {' '.join(cmd)}")
+    sys.stdout.flush()
+
+    if dry_run:
+        print("[heroic-steam-runner] Mode test (--dry-run) : succès !")
+        sys.exit(0)
+
+    # Remplacement synchrone du processus pour que Steam suive le jeu en continu
+    os.execvpe(cmd[0], cmd, env)
+
+if __name__ == "__main__":
+    main()

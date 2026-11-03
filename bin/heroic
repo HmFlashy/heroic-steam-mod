@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Heroic Steam Mod - Wrapper d'interception pour Steam
+# ==============================================================================
+# Quand Steam lance un raccourci Heroic ('heroic://launch...'), ce script
+# intercepte la commande pour exécuter le jeu de façon bloquante via
+# 'heroic-steam-runner'. Cela permet à Steam de conserver le suivi du processus,
+# d'activer Steam Input (compatibilité manettes Bluetooth/PlayStation),
+# le compteur d'heures et l'overlay Steam.
+#
+# Quand appelé normalement (sans 'heroic://launch'), il lance l'interface
+# graphique officielle de Heroic sans modifier aucun comportement.
+# ==============================================================================
+
+RUNNER_BIN="${HOME}/.local/bin/heroic-steam-runner"
+
+for arg in "$@"; do
+    if [[ "$arg" == *"heroic://launch"* ]]; then
+        if [[ -x "$RUNNER_BIN" ]]; then
+            exec "$RUNNER_BIN" "$@"
+        fi
+    fi
+done
+
+# Recherche du binaire Electron officiel pour lancer l'interface graphique
+if command -v electron43 >/dev/null 2>&1; then
+    exec electron43 /opt/Heroic/app.asar "$@"
+elif command -v electron >/dev/null 2>&1; then
+    exec electron /opt/Heroic/app.asar "$@"
+elif [[ -x "/usr/bin/heroic" ]]; then
+    exec /usr/bin/heroic "$@"
+else
+    echo "Erreur: Impossible de localiser l'exécutable officiel de Heroic." >&2
+    exit 1
+fi
